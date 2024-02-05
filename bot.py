@@ -10,3 +10,6 @@ def normal_bot():
 """ Запускает сложного бота """
 def hard_bot():
     pass
+
+def func():
+    pass
