@@ -1,71 +1,110 @@
-import draw, test
+import draw, test, bot, json
+
+""" Шаблон поля """
+def field_template(cells):
+    line = (cells-1) * ' {} |' + ' {} \n'
+    a = line + (cells-1) * '————' + '———\n'   
+    return a * (cells-1) + line
 
 """ Запускает игровой процес """
-def Game():
-    all_cells = 9
-    board = [' ']*all_cells
+# def game(player1: str, player2: str, lvl_bot: 'function', all_cells:int = 9):
+def game(game_set: dict, mode: 'function'):
+    # {frozenset(('name1', 'name2')): {'player1': token, 'moves': [1, 2, 3], 'dim': 3}}
+    names = list(game_set.keys())[0] # frozenset({'name1', 'name2'})
+    name1 = list(names)[0] # 'name1'
+    name2 = list(names)[1] # 'name2'
     
+    player1_stats = finds_name(name1) 
+    player2_stats = finds_name(name2) # {'name': [победа, поражение, ничья]}
+    players_stats = [player1_stats, player2_stats]
+    
+    all_cells = int(game_set[names]['dim'])
+    board = [' ']*all_cells**2
+    
+    info = f' Чтобы поставить токен в нужную ячейку, введите номер клетки. Нумерация клеток от 0 до {all_cells}\n\n{field_template(all_cells)}\n'
+    # добавить проверку на допустиммый ввод    
     turn = 0
-    name1 = []
-    name2 = []
-      
-    flag = False
-    while flag == False:
-        print(draw.field_template.format(*board))
+    flag = None
+    while flag == None:
+        print(field_template(all_cells).format(*board))
         if turn == 0:
             step = test.step_test()
-            test.moves_made.append(step)
-            name1.append(step)
             board[step] = 'X'
             turn = 1
-            flag = test.win_test(name1)
         else:
-            step = test.step_test()
-            test.moves_made.append(step)
-            name2.append(step)
+            step = mode()
             board[step] = 'O'
             turn = 0
-            flag = test.win_test(name2)
-    print(draw.field_template.format(*board))
+            
+        test.moves_made.append(step)
+        flag = test.win_test(tuple(names), turn)
+    if len(flag) > 1:
+        players_stats[turn][2] += 1
+        players_stats[turn-1][2] += 1
+        print(f' Поздравляю игроков с Ничьей! ')
+    else:
+        players_stats[turn][0] += 1
+        players_stats[turn-1][1] += 1
+        print(f' Поздравляю игрока {flag} с победой! ')
 
-""" Запускает легкого бота """
-info = f'Чтобы поставить токен в нужную ячейку, введите номер клетки. Нумерация клеток от 1 до 9\n\n{draw.field_template}\n'
+    print(field_template(all_cells).format(*board))
+    finds_name(name1, player1_stats) # перезапись статистики игрока1
+    finds_name(name2, player2_stats) # перезапись статистики игрока2
 
-def easy_bot():
-    print('Легкий бот запущен\n')
-    print(info)
+""" Обновляет статистику игроков игроков | Добавляет новый игроков """
+def finds_name(name: str, stats:list = [0, 0, 0]) -> dict:
+    with open('data_players.txt', 'r', encoding='utf-8') as dp:
+        data_load = json.loads(dp.read())
+        data_load[name] = stats
+    with open('data_players.txt', 'w', encoding='utf-8') as dp:
+        dp.write(json.dumps(data_load))
+    return {name: data_load[name]}
+
+""" Задает параметры новой игры """
+def new_game(name1, name2):
+    select_turn = input(f'{name1}, вы хотите играть за "Х" или за "О" ?: ').lower()
+    board_size = input(f' Выберите размер игрового поля от 3 до 24: ')
+    turn = ['X' if select_turn in ('x', 'х') else 'O'][0]
+    return {frozenset((name1, name2)): {name1: turn, 
+                                        'moves': [], 
+                                        'dim': board_size}}
     
-""" Запускает нормального бота """
-def normal_bot():
-    print('Нормальный бот запущен\n')
-    print(info)
-    
-""" Запускает сложного бота """
-def hard_bot():
-    print('Сложный бот запущен\n')
-    print(info)
-    
+""" Находит и загружает сохраненную игру """
+def find_save_game(name1, name2) -> dict:
+    with open('save_games.txt', 'r', encoding='utf-8') as sg:
+        saves_load = json.loads(sg.read())
+        game_set = frozenset((name1, name2))
+        if game_set in saves_load:
+            play = input(f'Хотите загрузить сохраненную игру? да/нет -> ')
+            if play == 'да':
+                return {frozenset((name1, name2)): saves_load[game_set]}
+            else:
+                return new_game(name1, name2)
+        else:
+            return new_game(name1, name2)
+                
 """ Запуск режима одиночной игры """
-def solo_play(name):
+def solo_play(player):
+    players_data = find_save_game(player, 'bot')
     lvl_bot = input('Выберите уровень сложности -> easy/normal/hard: ')
     if lvl_bot == 'easy':
-        easy_bot()
+        game(players_data, bot.easy_bot)
     elif lvl_bot == 'normal':
-        normal_bot()
+        game(players_data, bot.normal_bot)
     else:
-        hard_bot()
-    print('solo игра начата\n')
-
+        game(players_data, bot.hard_bot)
+    
 """ Запуск режима кооперативной игры """    
-def coop_play(name1):
-    print('coop игра начата\n')
-    name2 = ('Введите имя второго игрока: ')
-
+def coop_play(player1):
+    player2 = input('Введите имя второго игрока: ')
+    players_data = find_save_game(player1, player2)
+    game(players_data, test.step_test)
+    
 """ Запускает игру """    
-def start_play(name):
-    print(f'Погнали, {name}!\n')
+def start_play(player):
+    print(f'Погнали, {player}!\n')
     players_select = input('Хотите играть один или с другом? solo/coop: ')
     if players_select == 'solo':
-        solo_play(name)
+        solo_play(player)
     else:
-        coop_play(name)
+        coop_play(player)
